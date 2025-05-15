@@ -2,7 +2,7 @@
 #include <ws2tcpip.h>
 #include <iostream>
 #include <string>
-
+#include <mysql.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -10,24 +10,69 @@
 #define BUFFER_SIZE 1024
 using namespace std;
 
+MYSQL* connect_db() {
+    MYSQL* conn = mysql_init(nullptr);
+
+    if (!conn) {
+        cerr << "Erro ao iniciar conexão com mysql. \n";
+        return nullptr;
+    }
+
+    if (!mysql_real_connect(conn, "localhost", "root", "eltinho123", "bd_http", 3306, nullptr, 0)){
+        cerr << "Erro ao conectar: " << mysql_error(conn) << "\n";
+        return nullptr;
+    }
+
+    return conn;
+}
+
+void inserir_nome(const string& nome) {
+    MYSQL* conn = connect_db();
+
+    string query = "INSERT INTO nomes (nome) VALUES ('" + nome + "')";
+
+        if (mysql_query(conn, query.c_str())) {
+            cerr << "Erro ao inserir";
+        }
+
+        mysql_close(conn);
+}
+
 void handle_client(SOCKET clientSocket) {
     char buffer[BUFFER_SIZE];
     memset(buffer, 0, BUFFER_SIZE);
 
     //Receber dados:
     int bytesRecebidos = recv(clientSocket, buffer, BUFFER_SIZE - 1, 0);
+    if (bytesRecebidos <= 0) {
+        closesocket(clientSocket);
+        return;
+    }
 
-    if (bytesRecebidos > 0) {
-        cout << "Requisição recebida: \n" << buffer << endl;
+    string request(buffer);
+    cout << "Requisição recebida: \n" << request << endl;
 
-
-        //Resposta HTTP
+    // Verifica se é POST /inserir
+    if (request.find("POST /inserir") == 0) {
+        size_t bodyStart = request.find("\r\n\r\n");
+        if (bodyStart != string::npos) {
+            string body = request.substr(bodyStart + 4);  
+            cout << "Corpo recebido: " << body << endl;
+            inserir_nome(body);
+            string ok = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
+            send(clientSocket, ok.c_str(), ok.size(), 0);
+        }
+        else {
+            cerr << "Não foi possível localizar o corpo da requisição.\n";
+        }
+    }
+    else {
+        // Resposta padrão
         string response = "HTTP/1.1 200 OK\r\n"
             "Content-Type: text/plain\r\n"
             "Content-Length: 13\r\n"
             "\r\n"
-            "Entra no quadrado e dropa";
-
+            "Hello world";
         send(clientSocket, response.c_str(), static_cast<int>(response.size()), 0);
     }
 
